@@ -1,0 +1,454 @@
+{
+  "name": "[Ludovic Vendetti] POC - PDF to Google slide",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Présentation from PDF",
+        "formDescription": "Importer un PDF pour créé votre présentation",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Fichier PDF",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6e57366d-c66b-42ce-ab77-1d39730151a3",
+      "name": "On form submission",
+      "webhookId": "3dee2e66-db48-4c68-8524-02258d7b7d56"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "=Fichier_PDF",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ],
+      "id": "8a55466d-96d1-403d-8add-4bcfdee18745",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.text }}",
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n  \"Title\" : \"Titre de la présentation\",\n  \"slides\": [\n    {\n      \"number\": 1,\n      \"title\": \"Titre du Slide 1\",\n      \"content\": \"Résumé ou bullet points du contenu du slide 1\"\n    },\n    {\n      \"number\": 2,\n      \"title\": \"Titre du Slide 2\",\n      \"content\": \"Résumé ou bullet points du contenu du slide 2\"\n    }\n  ]\n}",
+        "options": {
+          "systemPromptTemplate": "=Tu es un assistant spécialisé dans la synthèse de documents et la création de présentations PowerPoint structurées. \n\nTu vas recevoir un texte brut extrait d'un PDF. Ta tâche est d'analyser ce texte et de générer une présentation synthétique sous forme de slides logiques. \n\n### **Consignes de structuration :**\n1. **Segmentation intelligente :** Identifie les grandes parties du document et découpe-les en slides cohérents.\n2. **Titre & contenu concis :** Chaque slide doit contenir un titre clair et un résumé concis (bullet points ou courts paragraphes).\n3. **Hiérarchisation :** Si nécessaire, inclut des sous-sections pour structurer l'information.\n4. **Clarté & lisibilité :** Évite les phrases longues et privilégie des formulations simples et impactantes.\n\nLe nombre de slides doit être adapté à la longueur du document tout en restant synthétique."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1,
+      "position": [
+        420,
+        0
+      ],
+      "id": "bc4919b5-4208-479a-bc02-c58cdf688db8",
+      "name": "Information Extractor"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        420,
+        220
+      ],
+      "id": "2e4ecdb7-b15f-4186-b404-d4de2ee52159",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "ExUsT2qLimSUsSK2",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8f12b9ee-902a-4ce3-9d84-742366c6c87e",
+              "name": "presentationId",
+              "value": "={{ $json.presentationId }}",
+              "type": "string"
+            },
+            {
+              "id": "ce8aa12c-df93-4bb9-a2c0-c3364967171b",
+              "name": "presentation",
+              "value": "={{ $('Information Extractor').item.json.output }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1220,
+        0
+      ],
+      "id": "c05396ad-5862-4cb2-a1b9-d35cb3fd8d95",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://slides.googleapis.com/v1/presentations/{{ $json.presentationId }}:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSlidesOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"requests\": [\n    {\n      \"createSlide\": {\n        \"objectId\": \"slide_custom_{{ $json.slide.number }}\",\n        \"slideLayoutReference\": {\n          \"predefinedLayout\": \"BLANK\"\n        }\n      }\n    },\n    {\n      \"createShape\": {\n        \"objectId\": \"custom_title_{{ $json.slide.number }}\",\n        \"shapeType\": \"TEXT_BOX\",\n        \"elementProperties\": {\n          \"pageObjectId\": \"slide_custom_{{ $json.slide.number }}\",\n          \"size\": {\n            \"width\": {\n              \"magnitude\": 4000000,\n              \"unit\": \"EMU\"\n            },\n            \"height\": {\n              \"magnitude\": 700000,\n              \"unit\": \"EMU\"\n            }\n          },\n          \"transform\": {\n            \"scaleX\": 1,\n            \"scaleY\": 1,\n            \"translateX\": 1000000,\n            \"translateY\": 500000,\n            \"unit\": \"EMU\"\n          }\n        }\n      }\n    },\n    {\n      \"insertText\": {\n        \"objectId\": \"custom_title_{{ $json.slide.number }}\",\n        \"insertionIndex\": 0,\n        \"text\": \"{{ $json.slide.title }}\"\n      }\n    },\n    {\n      \"createShape\": {\n        \"objectId\": \"custom_text_{{ $json.slide.number }}\",\n        \"shapeType\": \"TEXT_BOX\",\n        \"elementProperties\": {\n          \"pageObjectId\": \"slide_custom_{{ $json.slide.number }}\",\n          \"size\": {\n            \"width\": {\n              \"magnitude\": 4000000,\n              \"unit\": \"EMU\"\n            },\n            \"height\": {\n              \"magnitude\": 2000000,\n              \"unit\": \"EMU\"\n            }\n          },\n          \"transform\": {\n            \"scaleX\": 1,\n            \"scaleY\": 1,\n            \"translateX\": 1000000,\n            \"translateY\": 1500000,\n            \"unit\": \"EMU\"\n          }\n        }\n      }\n    },\n    {\n      \"insertText\": {\n        \"objectId\": \"custom_text_{{ $json.slide.number }}\",\n        \"insertionIndex\": 0,\n        \"text\": \"{{ $json.slide.content }}\"\n      }\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        400
+      ],
+      "id": "c0517266-c86b-4300-841c-d9e32e6c06c1",
+      "name": "Create Slide",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "presentation.slides",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "presentationId",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        20,
+        400
+      ],
+      "id": "35318751-a02e-4278-8948-a818d0ff7bc9",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b746a6e6-3241-4d0b-8cec-11e74803c459",
+              "name": "presentationId",
+              "value": "={{ $json.presentationId }}",
+              "type": "string"
+            },
+            {
+              "id": "42b6ca22-65d9-4ab7-a57d-3d11a08df518",
+              "name": "slide",
+              "value": "={{ $json['presentation.slides'] }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        400
+      ],
+      "id": "daa4f00c-86cb-411b-abdb-33fa56576ab0",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "799a1c39-cfe5-45cf-aea4-313df47404a6",
+              "name": "error",
+              "value": "={{ $json.error }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        780,
+        520
+      ],
+      "id": "96cec73c-3945-4639-8ba9-b337d6ec4468",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\n\n\nreturn $input.all().map(sld => {\n  return {\n    ...sld.json,\n    slide : {\n      ...sld.json.slide,\n      number : sld.json.slide.number - 1,\n      content : sld.json.slide.content.replaceAll('\\n', '\\\\n')\n    }\n  }\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        400
+      ],
+      "id": "c815df2c-b675-4745-b2e0-4cc5e3a78fc5",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slides.googleapis.com/v1/presentations",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSlidesOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "={{ $json.output.Title }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        0
+      ],
+      "id": "3f637adc-643f-4f57-af89-b1dd7d06a987",
+      "name": "Create Presentation"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://slides.googleapis.com/v1/presentations/{{ $json.presentationId }}:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSlidesOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"requests\": [\n    {\n      \"deleteObject\": {\n        \"objectId\": \"p\"\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        0
+      ],
+      "id": "761b7daf-51fd-42b9-b42a-1d22d6702dff",
+      "name": "Clean slides"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Présentation générer !",
+        "completionMessage": "=Votre présentation :  {{ $('Information Extractor').item.json.output.Title }} à été generer avec succès !",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        380
+      ],
+      "id": "b674073f-dc29-4b76-8542-caf80b55302b",
+      "name": "Form",
+      "webhookId": "1cd3991c-0f0e-494c-94b5-c3b1981e022c"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Erreur lors de la génération !",
+        "completionMessage": "=Votre présentation :  {{ $('Information Extractor').item.json.output.Title }} n'a pas pu ètre générer réassayer plus tard.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        520
+      ],
+      "id": "eca9df26-d506-48cb-8583-438ddfd70eb9",
+      "name": "Form1",
+      "webhookId": "1cd3991c-0f0e-494c-94b5-c3b1981e022c"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Create Presentation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Slide": {
+      "main": [
+        [
+          {
+            "node": "Form",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "Form1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Create Slide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Presentation": {
+      "main": [
+        [
+          {
+            "node": "Clean slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean slides": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "266f4e52-de31-4261-92c1-e0cf2bcf2213",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "12167d903bbb9aa21ef9e608089a124e7cb53b8a0896eda2c63234a2617eb952"
+  },
+  "id": "sg8K3EzwU0xPG02l",
+  "tags": []
+}
